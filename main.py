@@ -1,17 +1,19 @@
 import asyncio
 import json
+
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from config import BOT_TOKEN, CHANNEL_ID, HEADER_PRODUCTS, UPDATE_INTERVAL_HOURS
+from config import BOT_TOKEN, CHANNEL_ID, UPDATE_INTERVAL_HOURS, HEADER_PRODUCTS
 from parser import parse_price
-
-bot = Bot(BOT_TOKEN)
 
 
 def load_data():
-    with open("data.json", "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open("data.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"header_message_id": None}
 
 
 def save_data(data):
@@ -19,26 +21,42 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def build_header_text():
+def build_header_text() -> str:
     lines = [
         "Гарантия 7 дней со дня покупки на проверку",
         "Официальная гарантия 12 месяцев от Apple",
-        ""
+        "",
     ]
 
-    for name, url in HEADER_PRODUCTS.items():
-        price = parse_price(url)
-        lines.append(f"{name} - {price}")
+    # блок зарядок
+    lines.append(f"Apple USB-C мощностью 20 Вт - {parse_price(HEADER_PRODUCTS['Apple USB-C мощностью 20 Вт'])}")
+    lines.append(f"Apple Dual USB-C мощностью 35 Вт - {parse_price(HEADER_PRODUCTS['Apple Dual USB-C мощностью 35 Вт'])}")
+    lines.append("")
+
+    # блок AirPods
+    airpods_order = [
+        "AirPods Pro 3",
+        "AirPods Pro 2 (USB-C)",
+        "AirPods 4 с шумоподавлением",
+        "AirPods 4",
+        "AirPods Max Blue",
+        "AirPods Max Midnight",
+        "AirPods Max Orange",
+        "AirPods Max Purple",
+        "AirPods Max Starlight",
+    ]
+    for name in airpods_order:
+        lines.append(f"{name} - {parse_price(HEADER_PRODUCTS[name])}")
 
     return "\n".join(lines)
 
 
-async def update_header():
+async def update_header(bot: Bot):
     data = load_data()
     text = build_header_text()
 
-    if data["header_message_id"] is None:
-        msg = await bot.send_message(CHANNEL_ID, text)
+    if not data.get("header_message_id"):
+        msg = await bot.send_message(chat_id=CHANNEL_ID, text=text)
         data["header_message_id"] = msg.message_id
         save_data(data)
     else:
@@ -50,12 +68,16 @@ async def update_header():
 
 
 async def main():
+    bot = Bot(token=BOT_TOKEN)
+
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(update_header, "interval", hours=UPDATE_INTERVAL_HOURS)
+    scheduler.add_job(update_header, "interval", hours=UPDATE_INTERVAL_HOURS, args=[bot])
     scheduler.start()
 
-    await update_header()
+    # первый запуск сразу
+    await update_header(bot)
 
+    # держим процесс живым
     while True:
         await asyncio.sleep(3600)
 
